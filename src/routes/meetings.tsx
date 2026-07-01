@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { FileText, Loader2 } from "lucide-react";
-import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -9,8 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { AIOutput } from "@/components/ai-output";
 import { ResponsibleAI } from "@/components/responsible-ai";
-import { generateAI } from "@/lib/ai.functions";
 import { addHistory } from "@/lib/history";
+import { MEETING_DEFAULT_NOTES, MEETING_MOCK_SUMMARY, mockDelay } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/meetings")({
   head: () => ({ meta: [{ title: "Meeting Notes Summarizer — Workplace AI" }] }),
@@ -18,8 +17,7 @@ export const Route = createFileRoute("/meetings")({
 });
 
 function MeetingsPage() {
-  const gen = useServerFn(generateAI);
-  const [notes, setNotes] = useState("");
+  const [notes, setNotes] = useState(MEETING_DEFAULT_NOTES);
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -27,18 +25,21 @@ function MeetingsPage() {
     if (!notes.trim()) { toast.error("Paste your meeting notes first"); return; }
     setLoading(true);
     try {
-      const res = await gen({
-        data: {
-          system: "Summarize the provided meeting notes into clear markdown sections: ## Summary, ## Key Decisions, ## Action Items, ## Deadlines, ## Participants. Use concise bullet points.",
-          prompt: notes,
-        },
-      });
-      setOutput(res.text);
-      addHistory({ type: "meeting", title: "Meeting summary " + new Date().toLocaleDateString(), content: res.text });
+      const text = await mockDelay(MEETING_MOCK_SUMMARY);
+      setOutput(text);
+      addHistory({ type: "meeting", title: "Meeting summary " + new Date().toLocaleDateString(), content: text });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed");
     } finally { setLoading(false); }
   };
+
+  const didAuto = useRef(false);
+  useEffect(() => {
+    if (didAuto.current) return;
+    didAuto.current = true;
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
@@ -54,7 +55,17 @@ function MeetingsPage() {
           </div>
         </CardContent>
       </Card>
-      {output && <div className="mt-6"><AIOutput value={output} onChange={setOutput} onRegenerate={run} loading={loading} filename="meeting-summary" markdown /></div>}
+      {(output || loading) && (
+        <div className="mt-6">
+          {loading && !output ? (
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground shadow-[var(--shadow-card)]">
+              <Loader2 className="h-4 w-4 animate-spin" /> Summarizing your notes…
+            </div>
+          ) : (
+            <AIOutput value={output} onChange={setOutput} onRegenerate={run} loading={loading} filename="meeting-summary" markdown />
+          )}
+        </div>
+      )}
       <ResponsibleAI />
     </div>
   );
