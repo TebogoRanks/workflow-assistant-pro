@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Mail, Loader2 } from "lucide-react";
-import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,8 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AIOutput } from "@/components/ai-output";
 import { ResponsibleAI } from "@/components/responsible-ai";
-import { generateAI } from "@/lib/ai.functions";
 import { addHistory } from "@/lib/history";
+import { EMAIL_DEFAULTS, mockEmail, mockDelay } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/email")({
   head: () => ({ meta: [{ title: "Smart Email Generator — Workplace AI" }] }),
@@ -21,11 +20,11 @@ export const Route = createFileRoute("/email")({
 });
 
 function EmailPage() {
-  const gen = useServerFn(generateAI);
-  const [purpose, setPurpose] = useState("");
-  const [recipient, setRecipient] = useState("");
-  const [points, setPoints] = useState("");
-  const [tone, setTone] = useState("Professional");
+  const [purpose, setPurpose] = useState(EMAIL_DEFAULTS.purpose);
+  const [recipient, setRecipient] = useState(EMAIL_DEFAULTS.recipient);
+  const [subject, setSubject] = useState(EMAIL_DEFAULTS.subject);
+  const [points, setPoints] = useState(EMAIL_DEFAULTS.points);
+  const [tone, setTone] = useState(EMAIL_DEFAULTS.tone);
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -33,20 +32,24 @@ function EmailPage() {
     if (!purpose.trim()) { toast.error("Please describe the email purpose"); return; }
     setLoading(true);
     try {
-      const res = await gen({
-        data: {
-          system: "You are an expert business communication assistant. Generate a well-written email using the following information. Maintain the selected tone while remaining clear, concise and professional. Return only the email with a subject line.",
-          prompt: `Purpose: ${purpose}\nRecipient: ${recipient || "colleague"}\nKey points:\n${points}\nTone: ${tone}`,
-        },
-      });
-      setOutput(res.text);
-      addHistory({ type: "email", title: purpose.slice(0, 60), content: res.text });
+      const text = await mockDelay(mockEmail({ recipient, subject, purpose, tone, points }));
+      setOutput(text);
+      addHistory({ type: "email", title: `Email: ${subject || purpose.slice(0, 40)}`, content: text });
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to generate");
     } finally { setLoading(false); }
   };
 
-  const clear = () => { setPurpose(""); setRecipient(""); setPoints(""); setOutput(""); };
+  const clear = () => { setPurpose(""); setRecipient(""); setSubject(""); setPoints(""); setOutput(""); };
+
+  // Auto-generate a sample email on first mount so the page never looks empty.
+  const didAuto = useRef(false);
+  useEffect(() => {
+    if (didAuto.current) return;
+    didAuto.current = true;
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
@@ -54,15 +57,19 @@ function EmailPage() {
       <Card>
         <CardContent className="grid gap-4 p-5 md:grid-cols-2">
           <div className="space-y-1.5">
-            <Label>Email purpose</Label>
-            <Input placeholder="e.g. Ask for a project update" value={purpose} onChange={(e) => setPurpose(e.target.value)} />
-          </div>
-          <div className="space-y-1.5">
             <Label>Recipient</Label>
             <Input placeholder="e.g. Sarah, Marketing Manager" value={recipient} onChange={(e) => setRecipient(e.target.value)} />
           </div>
+          <div className="space-y-1.5">
+            <Label>Subject</Label>
+            <Input placeholder="e.g. Project Status Update" value={subject} onChange={(e) => setSubject(e.target.value)} />
+          </div>
           <div className="space-y-1.5 md:col-span-2">
-            <Label>Key points</Label>
+            <Label>Purpose</Label>
+            <Input placeholder="e.g. Provide an update on project progress" value={purpose} onChange={(e) => setPurpose(e.target.value)} />
+          </div>
+          <div className="space-y-1.5 md:col-span-2">
+            <Label>Additional details / key points</Label>
             <Textarea rows={4} placeholder="- Timeline is slipping&#10;- Need Q3 numbers by Friday" value={points} onChange={(e) => setPoints(e.target.value)} />
           </div>
           <div className="space-y-1.5">
@@ -85,9 +92,15 @@ function EmailPage() {
         </CardContent>
       </Card>
 
-      {output && (
+      {(output || loading) && (
         <div className="mt-6">
-          <AIOutput value={output} onChange={setOutput} onRegenerate={run} loading={loading} filename="email" />
+          {loading && !output ? (
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground shadow-[var(--shadow-card)]">
+              <Loader2 className="h-4 w-4 animate-spin" /> Drafting your email…
+            </div>
+          ) : (
+            <AIOutput value={output} onChange={setOutput} onRegenerate={run} loading={loading} filename="email" />
+          )}
         </div>
       )}
       <ResponsibleAI />
