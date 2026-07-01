@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search, Loader2 } from "lucide-react";
-import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,8 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AIOutput } from "@/components/ai-output";
 import { ResponsibleAI } from "@/components/responsible-ai";
-import { generateAI } from "@/lib/ai.functions";
 import { addHistory } from "@/lib/history";
+import { RESEARCH_DEFAULTS, RESEARCH_MOCK, mockDelay } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/research")({
   head: () => ({ meta: [{ title: "AI Research Assistant — Workplace AI" }] }),
@@ -21,10 +20,9 @@ export const Route = createFileRoute("/research")({
 });
 
 function ResearchPage() {
-  const gen = useServerFn(generateAI);
-  const [topic, setTopic] = useState("");
-  const [context, setContext] = useState("");
-  const [depth, setDepth] = useState("Detailed");
+  const [topic, setTopic] = useState(RESEARCH_DEFAULTS.topic);
+  const [context, setContext] = useState(RESEARCH_DEFAULTS.context);
+  const [depth, setDepth] = useState(RESEARCH_DEFAULTS.depth);
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -32,17 +30,20 @@ function ResearchPage() {
     if (!topic.trim()) { toast.error("Enter a research topic"); return; }
     setLoading(true);
     try {
-      const res = await gen({
-        data: {
-          system: `You are an AI research assistant. Research the topic and provide an easy-to-understand professional summary. Depth level: ${depth}. Return markdown with sections: ## Overview, ## Key Insights, ## Important Facts, ## Recommendations, ## Sources (indicative references only — flag as unverified).`,
-          prompt: `Topic: ${topic}\nContext: ${context || "none"}`,
-        },
-      });
-      setOutput(res.text);
-      addHistory({ type: "research", title: topic.slice(0, 60), content: res.text });
+      const text = await mockDelay(RESEARCH_MOCK);
+      setOutput(text);
+      addHistory({ type: "research", title: topic.slice(0, 60), content: text });
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
     finally { setLoading(false); }
   };
+
+  const didAuto = useRef(false);
+  useEffect(() => {
+    if (didAuto.current) return;
+    didAuto.current = true;
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
@@ -74,7 +75,17 @@ function ResearchPage() {
           </div>
         </CardContent>
       </Card>
-      {output && <div className="mt-6"><AIOutput value={output} onChange={setOutput} onRegenerate={run} loading={loading} filename="research" markdown /></div>}
+      {(output || loading) && (
+        <div className="mt-6">
+          {loading && !output ? (
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground shadow-[var(--shadow-card)]">
+              <Loader2 className="h-4 w-4 animate-spin" /> Researching {topic}…
+            </div>
+          ) : (
+            <AIOutput value={output} onChange={setOutput} onRegenerate={run} loading={loading} filename="research" markdown />
+          )}
+        </div>
+      )}
       <ResponsibleAI />
     </div>
   );
