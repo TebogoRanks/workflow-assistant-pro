@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ListChecks, Loader2 } from "lucide-react";
-import { useServerFn } from "@tanstack/react-start";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
 import { Card, CardContent } from "@/components/ui/card";
@@ -12,8 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { AIOutput } from "@/components/ai-output";
 import { ResponsibleAI } from "@/components/responsible-ai";
-import { generateAI } from "@/lib/ai.functions";
 import { addHistory } from "@/lib/history";
+import { TASK_DEFAULTS, TASK_MOCK_PLAN, mockDelay } from "@/lib/mock-data";
 
 export const Route = createFileRoute("/tasks")({
   head: () => ({ meta: [{ title: "AI Task Planner — Workplace AI" }] }),
@@ -21,11 +20,10 @@ export const Route = createFileRoute("/tasks")({
 });
 
 function TasksPage() {
-  const gen = useServerFn(generateAI);
-  const [goals, setGoals] = useState("");
-  const [deadlines, setDeadlines] = useState("");
-  const [priority, setPriority] = useState("High");
-  const [hours, setHours] = useState("9am–5pm");
+  const [goals, setGoals] = useState(TASK_DEFAULTS.goals);
+  const [deadlines, setDeadlines] = useState(TASK_DEFAULTS.deadlines);
+  const [priority, setPriority] = useState(TASK_DEFAULTS.priority);
+  const [hours, setHours] = useState(TASK_DEFAULTS.hours);
   const [output, setOutput] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -33,17 +31,20 @@ function TasksPage() {
     if (!goals.trim()) { toast.error("List at least one goal"); return; }
     setLoading(true);
     try {
-      const res = await gen({
-        data: {
-          system: "You are a productivity coach. Create an optimized schedule that prioritizes important work while balancing workload. Return markdown with ## Daily Schedule (time-blocked), ## Weekly Overview, ## Priority Order, and ## Estimated Completion Times.",
-          prompt: `Goals:\n${goals}\nDeadlines:\n${deadlines}\nPriority: ${priority}\nWorking hours: ${hours}`,
-        },
-      });
-      setOutput(res.text);
-      addHistory({ type: "task", title: "Plan " + new Date().toLocaleDateString(), content: res.text });
+      const text = await mockDelay(TASK_MOCK_PLAN);
+      setOutput(text);
+      addHistory({ type: "task", title: "Plan " + new Date().toLocaleDateString(), content: text });
     } catch (e) { toast.error(e instanceof Error ? e.message : "Failed"); }
     finally { setLoading(false); }
   };
+
+  const didAuto = useRef(false);
+  useEffect(() => {
+    if (didAuto.current) return;
+    didAuto.current = true;
+    run();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-6 sm:px-6 sm:py-8">
@@ -79,7 +80,17 @@ function TasksPage() {
           </div>
         </CardContent>
       </Card>
-      {output && <div className="mt-6"><AIOutput value={output} onChange={setOutput} onRegenerate={run} loading={loading} filename="task-plan" markdown /></div>}
+      {(output || loading) && (
+        <div className="mt-6">
+          {loading && !output ? (
+            <div className="flex items-center gap-2 rounded-lg border border-border bg-card p-6 text-sm text-muted-foreground shadow-[var(--shadow-card)]">
+              <Loader2 className="h-4 w-4 animate-spin" /> Building your schedule…
+            </div>
+          ) : (
+            <AIOutput value={output} onChange={setOutput} onRegenerate={run} loading={loading} filename="task-plan" markdown />
+          )}
+        </div>
+      )}
       <ResponsibleAI />
     </div>
   );
